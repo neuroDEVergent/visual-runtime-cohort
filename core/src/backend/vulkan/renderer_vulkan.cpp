@@ -28,7 +28,6 @@ struct Camera2D {
   double x;
   double y;
   double zoom = 1.0;
-  float offset;
 };
 
 struct Vertex {
@@ -47,7 +46,7 @@ struct RendererBackend {
   bool init(SurfaceDescriptor *surface);
   void resize(uint32_t width, uint32_t height);
   void render_frame(float t);
-  void handle_input(Input* input, float dt);
+  void handle_input(Input* input);
   void update_camera(Camera2D camera);
   void shutdown();
 
@@ -123,9 +122,9 @@ void Renderer::shutdown() {
   }
 }
 
-void Renderer::handle_input(Input* input, float dt) {
+void Renderer::handle_input(Input* input) {
   if (backend_) {
-    backend_->handle_input(input, dt);
+    backend_->handle_input(input);
   }
 }
 
@@ -241,12 +240,9 @@ void RendererBackend::render_frame(float t) {
   }
 }
 
-void RendererBackend::handle_input(Input* input, float dt) {
+void RendererBackend::handle_input(Input* input) {
   // Handle scroll
   camera_.zoom = input->SCROLL_Y * 0.1;
-  if (camera_.zoom < 0.5) {
-    camera_.zoom = 0.5;
-  }
 
   // Handle panning only if leftclick is down
   if (input->LEFTCLICK) {
