@@ -5,6 +5,7 @@
 #include "vulkan_utils.hpp"
 
 #include <glm/mat4x4.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -23,6 +24,13 @@ using visual_runtime::vulkan::VulkanFrameResources;
 using visual_runtime::vulkan::VulkanPipeline;
 using visual_runtime::vulkan::VulkanPipelineConfig;
 
+struct Camera2D {
+  double x;
+  double y;
+  double zoom = 1.0;
+  float offset;
+};
+
 struct Vertex {
   float position[2];
   float color[3];
@@ -30,6 +38,7 @@ struct Vertex {
 
 struct FrameUniforms {
   glm::mat4 matrix{1.0f};
+  glm::mat4 view{1.0f};
 };
 
 } // namespace
@@ -38,6 +47,8 @@ struct RendererBackend {
   bool init(SurfaceDescriptor *surface);
   void resize(uint32_t width, uint32_t height);
   void render_frame(float t);
+  void handle_input(Input* input, float dt);
+  void update_camera(Camera2D camera);
   void shutdown();
 
 private:
@@ -78,6 +89,7 @@ private:
   VulkanPipeline pipeline_{};
   uint32_t render_width_ = 0;
   uint32_t render_height_ = 0;
+  Camera2D camera_;
 };
 
 Renderer::Renderer() = default;
@@ -108,6 +120,12 @@ void Renderer::shutdown() {
   if (backend_) {
     backend_->shutdown();
     backend_.reset();
+  }
+}
+
+void Renderer::handle_input(Input* input, float dt) {
+  if (backend_) {
+    backend_->handle_input(input, dt);
   }
 }
 
@@ -221,6 +239,28 @@ void RendererBackend::render_frame(float t) {
   } else if (present_result != VK_SUCCESS) {
     print_vk_error("failed to present Vulkan swapchain image", present_result);
   }
+}
+
+void RendererBackend::handle_input(Input* input, float dt) {
+  // Handle scroll
+  camera_.zoom = input->SCROLL_Y * 0.1;
+  if (camera_.zoom < 0.5) {
+    camera_.zoom = 0.5;
+  }
+
+  // Handle panning only if leftclick is down
+  if (input->LEFTCLICK) {
+    double dx = input->MOUSE_X - input->LAST_MOUSE_X;
+    double dy = input->MOUSE_Y - input->LAST_MOUSE_Y;
+
+    camera_.x += dx;
+    camera_.y += dy;
+  }
+
+  input->LAST_MOUSE_X = input->MOUSE_X;
+  input->LAST_MOUSE_Y = input->MOUSE_Y;
+
+  update_frame_uniforms();
 }
 
 void RendererBackend::shutdown() {
@@ -592,6 +632,10 @@ void RendererBackend::update_frame_uniforms() {
     }
   }
   uniforms.matrix[1][1] *= -1.0f;
+
+  // Set the view matrix based on the updated camera
+  uniforms.view = glm::translate(glm::mat4(1.0f), glm::vec3(camera_.x, camera_.y, 1.0));
+  uniforms.view = glm::scale(uniforms.view, glm::vec3(camera_.zoom, camera_.zoom, 1.0f));
 
   void *data = nullptr;
   if (!check_vk(vkMapMemory(context_.device(), frame_uniform_buffer_memory_, 0,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "visual_runtime/api.h"
+#include "input.h"
 
 #include <memory>
 
@@ -18,6 +19,7 @@ struct Renderer {
   bool init(SurfaceDescriptor *surface);
   void resize(uint32_t width, uint32_t height);
   void render_frame(float t);
+  void handle_input(Input* input, float dt);
   void shutdown();
 
 private:

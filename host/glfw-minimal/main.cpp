@@ -1,4 +1,5 @@
 #include "visual_runtime_module.h"
+#include "input.h"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -22,6 +23,8 @@ struct AppState {
   VisualRuntimeModule *runtime = nullptr;
 };
 
+Input input{0};
+
 void glfw_error(int code, const char *description) {
   std::fprintf(stderr, "[glfw-minimal] GLFW error %d: %s\n", code,
                description ? description : "unknown");
@@ -42,6 +45,23 @@ void framebuffer_resized(GLFWwindow *window, int width, int height) {
                          static_cast<uint32_t>(height));
   std::fprintf(stderr, "[glfw-minimal] resized to %dx%d\n", width, height);
 }
+
+void scroll_callback(GLFWwindow *window, double dx, double dy) {
+  input.SCROLL_Y += dy;
+  if (input.SCROLL_Y < 0.5)
+    input.SCROLL_Y = 0.5;
+  if (input.SCROLL_Y > 30.0)
+    input.SCROLL_Y = 30.0;
+}
+
+void mouse_callback(GLFWwindow *window, double x, double y) {
+  int width, height;
+
+  glfwGetWindowSize(window, &width, &height);
+  input.MOUSE_X = ((x / width) * 2.0) - 1.0 ;
+  input.MOUSE_Y = ((y / height) * 2.0) - 1.0;
+}
+
 
 #if defined(__linux__)
 #if defined(VRT_GLFW_HAS_NATIVE_WAYLAND)
@@ -166,7 +186,6 @@ bool attach_surface(GLFWwindow *window, VisualRuntimeModule &runtime) {
   return false;
 }
 #endif
-
 } // namespace
 
 int main() {
@@ -216,7 +235,14 @@ int main() {
     float dt = std::chrono::duration<float>(now - last).count();
     last = now;
 
-    runtime.tick(dt);
+    glfwSetScrollCallback(window, scroll_callback);
+    glfwSetCursorPosCallback(window, mouse_callback);
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+      input.LEFTCLICK = true;
+    }
+    else input.LEFTCLICK = false;
+    
+    runtime.tick(&input, dt);
     glfwPollEvents();
   }
 

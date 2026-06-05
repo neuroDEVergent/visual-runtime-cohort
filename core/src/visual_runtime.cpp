@@ -21,9 +21,10 @@ static void visual_runtime_resize_impl(VisualRuntimeState *, uint32_t width,
   g_renderer.resize(width, height);
 }
 
-static void visual_runtime_update_impl(VisualRuntimeState *state, float dt) {
+static void visual_runtime_update_impl(VisualRuntimeState *state,Input* input, float dt) {
   state->frame_count++;
   state->elapsed_time += dt;
+  g_renderer.handle_input(input, dt);
   g_renderer.render_frame(state->elapsed_time);
 }
 

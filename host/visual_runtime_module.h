@@ -2,6 +2,7 @@
 
 #include "dynamic_library.h"
 #include "visual_runtime_api.h"
+#include "input.h"
 
 #include <cstdint>
 #include <utility>
@@ -52,9 +53,9 @@ struct VisualRuntimeModule {
     return true;
   }
 
-  void tick(float dt) const {
+  void tick(Input* input, float dt) const {
     if (api_.update)
-      api_.update(&state_, dt);
+      api_.update(&state_, input, dt);
   }
 
   void shutdown() const {

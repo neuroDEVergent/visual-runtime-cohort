@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "input.h"
 
 struct VisualRuntimeState {
   uint64_t frame_count;
@@ -33,10 +34,11 @@ struct VisualRuntimeAPI {
 
   void (*init)(VisualRuntimeState *, SurfaceDescriptor *);
   void (*resize)(VisualRuntimeState *, uint32_t, uint32_t);
-  void (*update)(VisualRuntimeState *, float);
+  void (*update)(VisualRuntimeState *, Input*, float);
   void (*shutdown)(VisualRuntimeState *);
 };
 
 extern "C" {
 const VisualRuntimeAPI *visual_runtime_get_api();
 }
+
