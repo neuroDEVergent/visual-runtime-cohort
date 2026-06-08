@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace {
 
@@ -35,6 +36,11 @@ struct Vertex {
   float color[3];
 };
 
+struct Rect {
+  float x, y;
+};
+std::vector<Rect> rectangles;
+
 struct FrameUniforms {
   glm::mat4 matrix{1.0f};
   glm::mat4 view{1.0f};
@@ -51,6 +57,7 @@ struct RendererBackend {
   void shutdown();
 
 private:
+  void draw_rectangle(float x, float y);
   bool create_command_pool();
   bool create_sync_objects();
   bool create_frame_resources();
@@ -89,6 +96,9 @@ private:
   uint32_t render_width_ = 0;
   uint32_t render_height_ = 0;
   Camera2D camera_;
+  static const uint32_t MAX_RECTS = 128;
+  Vertex staged_vertices_[MAX_RECTS * 6];
+  uint32_t staged_vertex_count_ = 0;
 };
 
 Renderer::Renderer() = default;
@@ -179,6 +189,28 @@ void RendererBackend::render_frame(float t) {
     return;
   }
 
+  const VkDeviceSize upload_size = sizeof(Vertex) * staged_vertex_count_;
+  if (upload_size > 0) {
+    void *data = nullptr;
+    vkMapMemory(context_.device(), vertex_buffer_memory_, 0, upload_size, 0, &data);
+    std::memcpy(data, staged_vertices_, upload_size);
+    vkUnmapMemory(context_.device(), vertex_buffer_memory_);
+  }
+
+  vertex_count_ = staged_vertex_count_;
+  staged_vertex_count_ = 0;
+  for (auto &r: rectangles) {
+    draw_rectangle(r.x, r.y);
+  }
+
+  // Debug print
+  /* 
+  printf("rects=%zu staged=%u vertex_count=%u\n",
+       rectangles.size(),
+       staged_vertex_count_,
+       vertex_count_);
+  */
+
   uint32_t image_index = 0;
   VkSwapchainKHR swapchain = frame_resources_.swapchain();
   VkResult acquire_result =
@@ -242,19 +274,38 @@ void RendererBackend::render_frame(float t) {
 
 void RendererBackend::handle_input(Input* input) {
   // Handle scroll
-  camera_.zoom = input->SCROLL_Y * 0.1;
+  double zoom_speed = 0.1;
+  camera_.zoom = input->SCROLL_Y * zoom_speed;
+
+  // NDC mouse
+  float ndcX = (2.0f * input->LAST_MOUSE_X / input->SCREEN_WIDTH) - 1.0f;
+  float ndcY = (2.0f * input->LAST_MOUSE_Y / input->SCREEN_HEIGHT) - 1.0f;
+
+  float aspect = float (input->SCREEN_WIDTH) / float (input->SCREEN_HEIGHT);
+  float sx = (aspect >= 1.0f) ? (1.0f / aspect) : 1.0f;
+  float sy = (aspect >= 1.0f) ? -1.0f : -aspect;
+
+  float wx = (ndcX / sx) / camera_.zoom + camera_.x;
+  float wy = (ndcY / sy) / camera_.zoom + camera_.y;
 
   // Handle panning only if leftclick is down
-  if (input->LEFTCLICK) {
+  if (input->LCLICK_DOWN) {
     double dx = input->MOUSE_X - input->LAST_MOUSE_X;
     double dy = input->MOUSE_Y - input->LAST_MOUSE_Y;
 
-    camera_.x += dx;
-    camera_.y += dy;
+    camera_.x += (2.0 * dx / input->SCREEN_WIDTH) / camera_.zoom;
+    camera_.y += (2.0 * dy / input->SCREEN_WIDTH) / camera_.zoom;
+
   }
 
   input->LAST_MOUSE_X = input->MOUSE_X;
   input->LAST_MOUSE_Y = input->MOUSE_Y;
+
+  // Handle drawing rectangles
+  if (input->RCLICK_PRESSED) {
+//    rectangles.push_back({input->MOUSE_X / input->SCREEN_WIDTH, input->MOUSE_Y / input->SCREEN_HEIGHT});
+  rectangles.push_back({wx, -wy});
+  }
 
   update_frame_uniforms();
 }
@@ -347,32 +398,30 @@ void RendererBackend::recreate_frame_resources() {
       [this] { return build_pipeline(); }, [this] { destroy_pipeline(); });
 }
 
-bool RendererBackend::build_geometry() {
-  static constexpr Vertex vertices[] = {
-      {{0.0f, 0.65f}, {1.0f, 0.0f, 0.0f}},
-      {{-0.7f, -0.55f}, {0.0f, 1.0f, 0.0f}},
-      {{0.7f, -0.55f}, {0.0f, 0.0f, 1.0f}},
-  };
+void RendererBackend::draw_rectangle(float x, float y) {
+  
+  if (staged_vertex_count_ + 6 > MAX_RECTS * 6) return;
 
-  const VkDeviceSize buffer_size = sizeof(vertices);
-  if (!create_buffer(buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+  float half_width = 0.35;
+  float half_height = 0.25;
+
+  Vertex *v = &staged_vertices_[staged_vertex_count_];
+
+    v[0] = {{(x - half_width), (-y - half_height)}, {1.0, 1.0, 1.0}},
+    v[1] = {{(x - half_width), (-y + half_height)}, {1.0, 1.0, 1.0}},
+    v[2] = {{(x + half_width), (-y + half_height)}, {1.0, 1.0, 1.0}},
+    v[3] = {{(x + half_width), (-y - half_height)}, {1.0, 1.0, 1.0}},
+    v[4] = {{(x - half_width), (-y - half_height)}, {1.0, 1.0, 1.0}},
+    v[5] = {{(x + half_width), (-y + half_height)}, {1.0, 1.0, 1.0}},
+    staged_vertex_count_ += 6;
+}
+
+bool RendererBackend::build_geometry() {
+  const VkDeviceSize buffer_size = sizeof(Vertex) * MAX_RECTS * 6;
+  return create_buffer(buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     vertex_buffer_, vertex_buffer_memory_)) {
-    return false;
-  }
-
-  void *data = nullptr;
-  if (!check_vk(vkMapMemory(context_.device(), vertex_buffer_memory_, 0,
-                            buffer_size, 0, &data),
-                "failed to map Vulkan vertex buffer")) {
-    return false;
-  }
-  std::memcpy(data, vertices, sizeof(vertices));
-  vkUnmapMemory(context_.device(), vertex_buffer_memory_);
-
-  vertex_count_ = static_cast<uint32_t>(sizeof(vertices) / sizeof(vertices[0]));
-  return true;
+                         vertex_buffer_, vertex_buffer_memory_);
 }
 
 bool RendererBackend::build_uniforms() {

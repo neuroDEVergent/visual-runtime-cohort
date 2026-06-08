@@ -48,18 +48,48 @@ void framebuffer_resized(GLFWwindow *window, int width, int height) {
 
 void scroll_callback(GLFWwindow *window, double dx, double dy) {
   input.SCROLL_Y += dy;
-  if (input.SCROLL_Y < 0.5)
-    input.SCROLL_Y = 0.5;
+  if (input.SCROLL_Y < 1.0)
+    input.SCROLL_Y = 1.0;
   if (input.SCROLL_Y > 30.0)
     input.SCROLL_Y = 30.0;
 }
 
 void mouse_callback(GLFWwindow *window, double x, double y) {
   int width, height;
-
   glfwGetWindowSize(window, &width, &height);
-  input.MOUSE_X = ((x / width) * 2.0) - 1.0 ;
-  input.MOUSE_Y = ((y / height) * 2.0) - 1.0;
+  
+  input.MOUSE_X = x;
+  input.MOUSE_Y = y;
+  input.SCREEN_WIDTH = width;
+  input.SCREEN_HEIGHT = height;
+}
+
+void click_callback(GLFWwindow *window, int button, int action, int mods) {
+
+  // Pressed action for left and right click
+  if (action == GLFW_PRESS) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+      input.LCLICK_DOWN = true;
+      input.LCLICK_PRESSED = true;
+    }
+
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+      input.RCLICK_DOWN = true;
+      input.RCLICK_PRESSED = true;
+    }
+  }
+
+  // Released action for left and right click
+  if (action == GLFW_RELEASE) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT) {
+      input.LCLICK_DOWN = false;
+      input.LCLICK_RELEASED = true;
+    }
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+      input.RCLICK_DOWN = false;
+      input.RCLICK_RELEASED = true;
+    }
+  }
 }
 
 
@@ -226,6 +256,11 @@ int main() {
   using clock = std::chrono::steady_clock;
   auto last = clock::now();
 
+  // GLFW callback function setup
+  glfwSetScrollCallback(window, scroll_callback);
+  glfwSetCursorPosCallback(window, mouse_callback);
+  glfwSetMouseButtonCallback(window, click_callback);
+ 
   while (!glfwWindowShouldClose(window)) {
     if (runtime.reloadIfChanged()) {
       std::printf("[host] reloaded (frame %llu)\n", runtime.frameCount());
@@ -235,15 +270,14 @@ int main() {
     float dt = std::chrono::duration<float>(now - last).count();
     last = now;
 
-    glfwSetScrollCallback(window, scroll_callback);
-    glfwSetCursorPosCallback(window, mouse_callback);
-    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
-      input.LEFTCLICK = true;
-    }
-    else input.LEFTCLICK = false;
-    
-    runtime.tick(&input, dt);
+    // reset the flags
+    input.LCLICK_PRESSED = false;
+    input.LCLICK_RELEASED = false;
+    input.RCLICK_PRESSED = false;
+    input.RCLICK_RELEASED = false;
     glfwPollEvents();
+  
+    runtime.tick(&input, dt);
   }
 
   std::printf("[glfw-minimal] exiting after %llu frames\n",
