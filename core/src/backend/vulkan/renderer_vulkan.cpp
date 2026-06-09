@@ -25,6 +25,12 @@ using visual_runtime::vulkan::VulkanFrameResources;
 using visual_runtime::vulkan::VulkanPipeline;
 using visual_runtime::vulkan::VulkanPipelineConfig;
 
+struct BackgroundColor {
+  float r = 0.0f;
+  float g = 0.0f;
+  float b = 0.0f;
+};
+
 struct Camera2D {
   double x;
   double y;
@@ -37,7 +43,7 @@ struct Vertex {
 };
 
 struct Rect {
-  float x, y;
+  double x, y;
 };
 std::vector<Rect> rectangles;
 
@@ -99,6 +105,7 @@ private:
   static const uint32_t MAX_RECTS = 128;
   Vertex staged_vertices_[MAX_RECTS * 6];
   uint32_t staged_vertex_count_ = 0;
+  BackgroundColor bg_color_;
 };
 
 Renderer::Renderer() = default;
@@ -277,35 +284,38 @@ void RendererBackend::handle_input(Input* input) {
   double zoom_speed = 0.1;
   camera_.zoom = input->SCROLL_Y * zoom_speed;
 
-  // NDC mouse
-  float ndcX = (2.0f * input->LAST_MOUSE_X / input->SCREEN_WIDTH) - 1.0f;
-  float ndcY = (2.0f * input->LAST_MOUSE_Y / input->SCREEN_HEIGHT) - 1.0f;
+  // We do everything in NDC
+  double aspect = float (input->SCREEN_WIDTH) / float (input->SCREEN_HEIGHT);
+  double ax = (aspect >= 1.0f) ? (1.0f / aspect) : 1.0f;
+  double ay = (aspect >= 1.0f) ? -1.0f : -aspect;
 
-  float aspect = float (input->SCREEN_WIDTH) / float (input->SCREEN_HEIGHT);
-  float sx = (aspect >= 1.0f) ? (1.0f / aspect) : 1.0f;
-  float sy = (aspect >= 1.0f) ? -1.0f : -aspect;
-
-  float wx = (ndcX / sx) / camera_.zoom + camera_.x;
-  float wy = (ndcY / sy) / camera_.zoom + camera_.y;
+  double wx = (input->LAST_MOUSE_X) - camera_.x;
+  double wy = (input->LAST_MOUSE_Y) - camera_.y;
 
   // Handle panning only if leftclick is down
   if (input->LCLICK_DOWN) {
-    double dx = input->MOUSE_X - input->LAST_MOUSE_X;
-    double dy = input->MOUSE_Y - input->LAST_MOUSE_Y;
+    double dx = ((2.0 * input->MOUSE_X / input->SCREEN_WIDTH) - 1.0f) - (input->LAST_MOUSE_X);
+    double dy = ((2.0 * input->MOUSE_Y / input->SCREEN_HEIGHT) - 1.0f) - (input->LAST_MOUSE_Y);
 
-    camera_.x += (2.0 * dx / input->SCREEN_WIDTH) / camera_.zoom;
-    camera_.y += (2.0 * dy / input->SCREEN_WIDTH) / camera_.zoom;
-
+    camera_.x += dx;
+    camera_.y += dy;
   }
 
-  input->LAST_MOUSE_X = input->MOUSE_X;
-  input->LAST_MOUSE_Y = input->MOUSE_Y;
+  input->LAST_MOUSE_X = ((2.0f * input->MOUSE_X / input->SCREEN_WIDTH) - 1.0f);
+  input->LAST_MOUSE_Y = ((2.0f * input->MOUSE_Y / input->SCREEN_HEIGHT) - 1.0f);
 
   // Handle drawing rectangles
   if (input->RCLICK_PRESSED) {
-//    rectangles.push_back({input->MOUSE_X / input->SCREEN_WIDTH, input->MOUSE_Y / input->SCREEN_HEIGHT});
-  rectangles.push_back({wx, -wy});
+    // We draw a triangle at the world position and take zoom and aspect into an account
+    rectangles.push_back({wx / ax / camera_.zoom, -wy / ay / camera_.zoom});
   }
+
+  if (input->KEYS.ZERO)   bg_color_ = {0.0, 0.0, 0.0};
+  if (input->KEYS.ONE)    bg_color_ = {1.0, 0.0, 0.0};
+  if (input->KEYS.TWO)    bg_color_ = {0.0, 1.0, 0.0};
+  if (input->KEYS.THREE)  bg_color_ = {0.0, 0.0, 1.0};
+  if (input->KEYS.FOUR)   bg_color_ = {1.0, 0.0, 1.0};
+  if (input->KEYS.FIVE)   bg_color_ = {0.0, 1.0, 1.0};
 
   update_frame_uniforms();
 }
@@ -601,7 +611,7 @@ bool RendererBackend::record_clear_commands(uint32_t image_index) {
   color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
   color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
   color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-  color_attachment.clearValue.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+  color_attachment.clearValue.color = {{bg_color_.r, bg_color_.g, bg_color_.b, 1.0f}};
 
   VkRenderingInfo rendering_info{};
   rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -672,8 +682,10 @@ void RendererBackend::update_frame_uniforms() {
 
     if (aspect >= 1.0f) {
       uniforms.matrix[0][0] = 1.0f / aspect;
+//      uniforms.matrix[0][0] = 1.0f;
     } else {
       uniforms.matrix[1][1] = aspect;
+//      uniforms.matrix[1][1] = 1.0f;
     }
   }
   uniforms.matrix[1][1] *= -1.0f;

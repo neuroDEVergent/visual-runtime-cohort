@@ -46,6 +46,26 @@ void framebuffer_resized(GLFWwindow *window, int width, int height) {
   std::fprintf(stderr, "[glfw-minimal] resized to %dx%d\n", width, height);
 }
 
+void keyboard_callback(GLFWwindow *window, int key, int scancode, int action, int mods) {
+  if (action != GLFW_PRESS)
+    return;
+
+  input.KEYS.ZERO = false;
+  input.KEYS.ONE = false;
+  input.KEYS.TWO = false;
+  input.KEYS.THREE = false;
+  input.KEYS.FOUR = false;
+  input.KEYS.FIVE = false;
+
+  if (key == GLFW_KEY_0) input.KEYS.ZERO  = true;
+  if (key == GLFW_KEY_1) input.KEYS.ONE   = true;
+  if (key == GLFW_KEY_2) input.KEYS.TWO   = true;
+  if (key == GLFW_KEY_3) input.KEYS.THREE = true;
+  if (key == GLFW_KEY_4) input.KEYS.FOUR  = true;
+  if (key == GLFW_KEY_5) input.KEYS.FIVE  = true;
+  
+}
+
 void scroll_callback(GLFWwindow *window, double dx, double dy) {
   input.SCROLL_Y += dy;
   if (input.SCROLL_Y < 1.0)
@@ -260,6 +280,7 @@ int main() {
   glfwSetScrollCallback(window, scroll_callback);
   glfwSetCursorPosCallback(window, mouse_callback);
   glfwSetMouseButtonCallback(window, click_callback);
+  glfwSetKeyCallback(window, keyboard_callback);
  
   while (!glfwWindowShouldClose(window)) {
     if (runtime.reloadIfChanged()) {
